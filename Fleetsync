@@ -1,0 +1,82 @@
+import qrcode
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import mm
+import hashlib
+import datetime
+import json
+import os
+
+# ===== CONFIG =====
+LEDGER_URL      = "https://github.com/Lainyshell/VBTN-Ledger"
+TRACKING_NUMBER = "420401609400110000000123456789"  # Replace when dynamically generating
+OUTPUT_PDF      = "usps_label.pdf"
+
+SHIP_FROM = {
+    "name": "Verdigris Botanica Tribal Nation Trust – General Post",
+    "address": "1450 North Dixie Blvd",
+    "city": "Radcliff",
+    "state": "KY",
+    "zip": "40160"
+}
+
+SHIP_TO = {
+    "name": "USPS National Programs – Fleet Modernization Division",
+    "address": "475 L’Enfant Plaza SW",
+    "city": "Washington",
+    "state": "DC",
+    "zip": "20260"
+}
+
+# ===== HASH LEDGER ENTRY =====
+ledger_entry = {
+    "tracking_number": TRACKING_NUMBER,
+    "timestamp": str(datetime.datetime.utcnow()),
+    "ship_from": SHIP_FROM,
+    "ship_to": SHIP_TO
+}
+
+entry_json = json.dumps(ledger_entry, sort_keys=True).encode()
+entry_hash = hashlib.sha256(entry_json).hexdigest()
+
+QR_LINK = f"{LEDGER_URL}/blob/main/ledger/{entry_hash}.json"
+
+# ===== GENERATE QR CODE =====
+qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_H)
+qr.add_data(QR_LINK)
+qr.make(fit=True)
+img = qr.make_image(fill_color="black", back_color="white")
+img.save("qr_code.png")
+
+# ===== GENERATE USPS LABEL PDF =====
+c = canvas.Canvas(OUTPUT_PDF, pagesize=(100*mm, 150*mm))  # 4x6 label
+
+# USPS REQUIRED BLOCKS
+c.setFont("Helvetica-Bold", 16)
+c.drawString(10*mm, 135*mm, "USPS PRIORITY MAIL")
+
+c.setFont("Helvetica", 10)
+c.drawString(10*mm, 125*mm, f"FROM: {SHIP_FROM['name']}")
+c.drawString(10*mm, 120*mm, f"{SHIP_FROM['address']}")
+c.drawString(10*mm, 115*mm, f"{SHIP_FROM['city']}, {SHIP_FROM['state']} {SHIP_FROM['zip']}")
+
+c.drawString(10*mm, 105*mm, f"TO: {SHIP_TO['name']}")
+c.drawString(10*mm, 100*mm, f"{SHIP_TO['address']}")
+c.drawString(10*mm, 95*mm, f"{SHIP_TO['city']}, {SHIP_TO['state']} {SHIP_TO['zip']}")
+
+c.setFont("Helvetica-Bold", 14)
+c.drawString(10*mm, 80*mm, f"TRACKING: {TRACKING_NUMBER}")
+
+# Draw QR
+c.drawImage("qr_code.png", 10*mm, 10*mm, width=60*mm, height=60*mm)
+
+c.save()
+
+# ===== WRITE BACK LEDGER ENTRY =====
+os.makedirs("ledger", exist_ok=True)
+with open(f"ledger/{entry_hash}.json", "w") as f:
+    f.write(json.dumps(ledger_entry, indent=4))
+
+print("Label created:", OUTPUT_PDF)
+print("Ledger entry:", f"ledger/{entry_hash}.json")
+print("QR link:", QR_LINK)
